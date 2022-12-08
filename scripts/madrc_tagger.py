@@ -30,6 +30,8 @@ def main():
         help='Output summary of updates')
     parser.add_argument('--confirm', action='store_true',
         help='Prompt user to confirm every update')
+    parser.add_argument('--dry-run', action='store_true',
+        help='Do everything except change anything in XNAT')
     parser.add_argument('session')
     args = parser.parse_args()
     
@@ -46,7 +48,8 @@ def main():
         'diffb0': diffb0(scans)
     }
 
-    upsert(args.alias, scans, updates, confirm=args.confirm)
+    if not args.dry_run:
+        upsert(args.alias, scans, updates, confirm=args.confirm)
 
     if args.output_file:
         logger.info(f'saving {args.output_file}')
@@ -57,6 +60,7 @@ def main():
 def upsert(alias, scans, updates, confirm=False):
     auth = yaxil.auth(alias)
     updates = list(squeeze(updates))
+    t1w = 0
     for scan in scans:
         sid = scan['id']
         note = scan['note']
@@ -68,10 +72,14 @@ def upsert(alias, scans, updates, confirm=False):
         update = update.pop()
         note = update['note'].strip()
         tag = update['tag'].strip()
+        modality = update['modality'].strip()
         if tag not in note:
             upsert = tag
             if note:
                 upsert = f'{tag} {note}'
+            if modality.lower() == 't1w':
+              t1w += 1
+              upsert = f'{upsert} #T1w_{t1w}'
             logger.info(f'setting note for scan {sid} to "{upsert}"')
             if confirm:
                 input('press enter to continue')
@@ -122,6 +130,7 @@ def adni(scans):
             'subject': scan['subject_label'],
             'session': session, 
             'scan': sid,
+            'modality': 't1w',
             'series_description': series,
             'note': note,
             'tag': tag
@@ -152,6 +161,7 @@ def csx6(scans):
                 'subject': scan['subject_label'],
                 'session': session, 
                 'scan': sid,
+                'modality': 't1w',
                 'series_description': series,
                 'note': note,
                 'tag': tag
@@ -160,9 +170,10 @@ def csx6(scans):
 
 def csx6filter(x):
     expr = re.compile('^WIP925B_\d+\.\d+mmCor_\d+_\d+_CSx6$')
+    image_type = x.get('image_type', '').encode('utf-8').decode('unicode_escape')
     return (
         expr.match(x['series_description']) and 
-        x['image_type'] == 'ORIGINAL\\PRIMARY\\M\\ND\\NORM' and
+        image_type == 'ORIGINAL\\PRIMARY\\M\\ND\\NORM' and
         x['quality'] == 'usable'
     )
 
@@ -184,6 +195,7 @@ def wave(scans):
                 'subject': scan['subject_label'],
                 'session': session,
                 'scan': sid,
+                'modality': 't1w',
                 'series_description': series,
                 'note': note,
                 'tag': tag
@@ -191,10 +203,11 @@ def wave(scans):
     return groups
 
 def wavefilter(x):
-    expr = re.compile('^WIP1084C_r3x3_1mm$')
+    expr = re.compile('^WIP1084C_r3x3_1mm(_RR)?$')
+    image_type = x.get('image_type', '').encode('utf-8').decode('unicode_escape')
     return (
         expr.match(x['series_description']) and
-        x['image_type'] == 'ORIGINAL\\PRIMARY\\M\\ND\\NORM' and
+        image_type == 'ORIGINAL\\PRIMARY\\M\\ND\\NORM' and
         x['quality'] == 'usable'
     )
 
@@ -219,6 +232,7 @@ def diffb0(scans):
                 'subject': scan['subject_label'],
                 'session': session,
                 'scan': sid,
+                'modality': 'b0',
                 'series_description': series,
                 'note': note,
                 'tag': tag
