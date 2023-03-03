@@ -30,6 +30,8 @@ def main():
         help='Output summary of updates')
     parser.add_argument('--confirm', action='store_true',
         help='Prompt user to confirm every update')
+    parser.add_argument('--overwrite', action='store_true',
+        help='Overwrite note instead of appending')
     parser.add_argument('--dry-run', action='store_true',
         help='Do everything except change anything in XNAT')
     parser.add_argument('session')
@@ -49,7 +51,13 @@ def main():
     }
 
     if not args.dry_run:
-        upsert(args.alias, scans, updates, confirm=args.confirm)
+        upsert(
+            args.alias,
+            scans,
+            updates,
+            overwrite=args.overwrite,
+            confirm=args.confirm
+        )
 
     if args.output_file:
         logger.info(f'saving {args.output_file}')
@@ -57,7 +65,7 @@ def main():
             content = yaml.dump(updates, sort_keys=False)
             fo.write(content)
 
-def upsert(alias, scans, updates, confirm=False):
+def upsert(alias, scans, updates, overwrite=False, confirm=False):
     auth = yaxil.auth(alias)
     updates = list(squeeze(updates))
     t1w = 0
@@ -73,12 +81,13 @@ def upsert(alias, scans, updates, confirm=False):
         note = update['note'].strip()
         tag = update['tag'].strip()
         modality = update['modality'].strip()
+        if modality.lower() == 't1w':
+            t1w += 1
         if tag not in note:
             upsert = tag
-            if note:
+            if note and not overwrite:
                 upsert = f'{tag} {note}'
             if modality.lower() == 't1w':
-              t1w += 1
               upsert = f'{upsert} #T1w_{t1w}'
             logger.info(f'setting note for scan {sid} to "{upsert}"')
             if confirm:
@@ -178,6 +187,7 @@ def csx6filter(x):
     )
 
 def wave(scans):
+    rr_num,rr_tag = 0,0
     scans = filter(wavefilter, scans)
     groups = collections.defaultdict(list)
     for scan in scans:
@@ -185,11 +195,23 @@ def wave(scans):
         session = scan['session_label']
         series = scan['series_description'].strip()
         note = scan['note'].strip()
-        match = re.match('.*_(\d+)mm', series)
+        match = re.match('.*_(\d+)mm(_RR)?', series)
         if match:
             vox = float(match.group(1))
+            is_rr = match.group(2)
             suffix = string.ascii_lowercase[len(groups[vox])]
-            tag = f'ANAT_{vox:.1f}_WAVE_{suffix}'
+            tag = f'ANAT_{vox:.1f}_WAVE'
+            # 🤷 special handling of RR (retro-recon) scans
+            if is_rr:
+                rr_num += 1
+                mod = rr_num % 2
+                rr_tag += mod
+                if mod == 0:
+                    rr_res = '0.0'
+                else:
+                    rr_res = '0.1'
+                tag += f'_RR{rr_tag}_{rr_res}'
+            tag += f'_{suffix}'
             groups[vox].append({
                 'project': scan['session_project'],
                 'subject': scan['subject_label'],
