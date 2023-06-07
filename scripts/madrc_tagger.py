@@ -179,10 +179,11 @@ def csx6(scans):
 
 def csx6filter(x):
     expr = re.compile('^WIP925B_\d+\.\d+mmCor_\d+_\d+_CSx6$')
-    image_type = x.get('image_type', '').encode('utf-8').decode('unicode_escape')
+    image_type = x.get('image_type', '')
+    image_type = re.split('\\\+', image_type)
     return (
         expr.match(x['series_description']) and 
-        image_type == 'ORIGINAL\\PRIMARY\\M\\ND\\NORM' and
+        image_type == ['ORIGINAL', 'PRIMARY', 'M', 'ND', 'NORM'] and
         x['quality'] == 'usable'
     )
 
@@ -226,10 +227,11 @@ def wave(scans):
 
 def wavefilter(x):
     expr = re.compile('^WIP1084C_r3x3_1mm(_RR)?$')
-    image_type = x.get('image_type', '').encode('utf-8').decode('unicode_escape')
+    image_type = x.get('image_type', '')
+    image_type = re.split('\\\+', image_type)
     return (
         expr.match(x['series_description']) and
-        image_type == 'ORIGINAL\\PRIMARY\\M\\ND\\NORM' and
+        image_type == ['ORIGINAL', 'PRIMARY', 'M', 'ND', 'NORM'] and
         x['quality'] == 'usable'
     )
 
