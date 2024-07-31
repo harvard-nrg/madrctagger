@@ -28,6 +28,8 @@ def main():
         help='Speed up development by caching yaxil.scans output')
     parser.add_argument('-o', '--output-file',
         help='Output summary of updates')
+    parser.add_argument('--protocol', choices=['v1', 'v2'], default='v1',
+        help='Scan protocol')
     parser.add_argument('--confirm', action='store_true',
         help='Prompt user to confirm every update')
     parser.add_argument('--overwrite', action='store_true',
@@ -44,10 +46,10 @@ def main():
         sys.exit(1)
 
     updates = {
-        'csx6': csx6(scans),
-        'wave': wave(scans),
-        'adni': adni(scans),
-        'diffb0': diffb0(scans)
+        'csx6':   csx6(scans, args.protocol),
+        'wave':   wave(scans, args.protocol),
+        'adni':   adni(scans, args.protocol),
+        'diffb0': diffb0(scans, args.protocol)
     }
 
     if not args.dry_run:
@@ -124,7 +126,12 @@ def setnote(auth, scan, text=None):
 class SetNoteError(Exception):
     pass
 
-def adni(scans):
+def adni(scans, protocol):
+    match protocol:
+      case 'v1':
+        adnifilter = adnifilter_v1
+      case 'v2':
+        adnifilter = adnifilter_v2
     scans = filter(adnifilter, scans)
     groups = collections.defaultdict(list)
     for scan in scans:
@@ -146,13 +153,24 @@ def adni(scans):
         })
     return groups
 
-def adnifilter(x):
+def adnifilter_v1(x):
     return (
         x['series_description'] == 'Accelerated Sagittal MPRAGE (MSV21)' and
         x['quality'] == 'usable'
     )
 
-def csx6(scans):
+def adnifilter_v2(x):
+    return (
+        x['series_description'] == 'Accelerated Sagittal MPRAGE' and
+        x['quality'] == 'usable'
+    )
+
+def csx6(scans, protocol):
+    match protocol:
+      case 'v1':
+        csx6filter = csx6filter_v1
+      case 'v2':
+        csx6filter = csx6filter_v2
     scans = filter(csx6filter, scans)
     groups = collections.defaultdict(list)
     for scan in scans:
@@ -160,7 +178,7 @@ def csx6(scans):
         session = scan['session_label']
         series = scan['series_description'].strip()
         note = scan['note'].strip()
-        match = re.match('.*_(\d+\.\d+)mmCor_.*', series)
+        match = re.match('.*_(\d+)mmCor_.*', series)
         if match:
             vox = float(match.group(1))
             suffix = string.ascii_lowercase[len(groups[vox])]
@@ -177,17 +195,25 @@ def csx6(scans):
             })
     return groups
 
-def csx6filter(x):
+def csx6filter_v1(x):
     expr = re.compile('^WIP925B_\d+\.\d+mmCor_\d+_\d+_CSx6$')
-    image_type = x.get('image_type', '')
-    image_type = re.split('\\\+', image_type)
+    image_type = x.get('image_type', '').encode('utf-8').decode('unicode_escape')
     return (
         expr.match(x['series_description']) and 
-        image_type == ['ORIGINAL', 'PRIMARY', 'M', 'ND', 'NORM'] and
+        image_type == 'ORIGINAL\\PRIMARY\\M\\ND\\NORM' and
         x['quality'] == 'usable'
     )
 
-def wave(scans):
+def csx6filter_v2(x):
+    expr = re.compile('^WIP19_1mmCor_\d+_\d+_CSx6$')
+    image_type = x.get('image_type', '').encode('utf-8').decode('unicode_escape')
+    return (
+        expr.match(x['series_description']) and 
+        image_type == 'ORIGINAL\\PRIMARY\\M\\NONE' and
+        x['quality'] == 'usable'
+    )
+
+def wave(scans, protocol):
     rr_num,rr_tag = 0,0
     scans = filter(wavefilter, scans)
     groups = collections.defaultdict(list)
@@ -227,15 +253,14 @@ def wave(scans):
 
 def wavefilter(x):
     expr = re.compile('^WIP1084C_r3x3_1mm(_RR)?$')
-    image_type = x.get('image_type', '')
-    image_type = re.split('\\\+', image_type)
+    image_type = x.get('image_type', '').encode('utf-8').decode('unicode_escape')
     return (
         expr.match(x['series_description']) and
-        image_type == ['ORIGINAL', 'PRIMARY', 'M', 'ND', 'NORM'] and
+        image_type == 'ORIGINAL\\PRIMARY\\M\\ND\\NORM' and
         x['quality'] == 'usable'
     )
 
-def diffb0(scans):
+def diffb0(scans, protocol):
     scans = filter(diffb0filter, scans)
     groups = collections.defaultdict(list)
     count = 1
