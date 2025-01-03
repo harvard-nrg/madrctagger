@@ -117,7 +117,6 @@ def setnote(auth, scan, text=None):
     params = {
         'xnat:mrscandata/note': text
     }
-    logger.info(f'setting note for {session} scan {scan_id} to {text}')
     logger.info(f'PUT {url} params {params}')
     r = requests.put(url, params=params, auth=(auth.username, auth.password))
     if r.status_code != requests.codes.OK:
@@ -154,14 +153,21 @@ def adni(scans, protocol):
     return groups
 
 def adnifilter_v1(x):
+    allowed_series_descriptions = [
+        'Accelerated Sagittal MPRAGE (MSV21)'
+    ]
     return (
-        x['series_description'] == 'Accelerated Sagittal MPRAGE (MSV21)' and
+        x['series_description'] in allowed_series_descriptions and
         x['quality'] == 'usable'
     )
 
 def adnifilter_v2(x):
+    allowed_series_descriptions = [
+        'Accelerated Sagittal MPRAGE',
+        'Accelerated Sagittal MPRAGE_RDS'
+    ]
     return (
-        x['series_description'] == 'Accelerated Sagittal MPRAGE' and
+        x['series_description'] in allowed_series_descriptions and
         x['quality'] == 'usable'
     )
 
@@ -178,7 +184,7 @@ def csx6(scans, protocol):
         session = scan['session_label']
         series = scan['series_description'].strip()
         note = scan['note'].strip()
-        match = re.match('.*_(\d+)mmCor_.*', series)
+        match = re.match(r'.*_(\d+(?:\.\d+)?)mmCor_.*', series)
         if match:
             vox = float(match.group(1))
             suffix = string.ascii_lowercase[len(groups[vox])]
@@ -196,7 +202,7 @@ def csx6(scans, protocol):
     return groups
 
 def csx6filter_v1(x):
-    expr = re.compile('^WIP925B_\d+\.\d+mmCor_\d+_\d+_CSx6$')
+    expr = re.compile(r'^WIP925B_\d+\.\d+mmCor_\d+_\d+_CSx6$')
     image_type = x.get('image_type', '').encode('utf-8').decode('unicode_escape')
     return (
         expr.match(x['series_description']) and 
@@ -205,7 +211,7 @@ def csx6filter_v1(x):
     )
 
 def csx6filter_v2(x):
-    expr = re.compile('^WIP19_1mmCor_\d+_\d+_CSx6$')
+    expr = re.compile(r'^WIP19_1mmCor_\d+_\d+_CSx6(_RDS)?$')
     image_type = x.get('image_type', '').encode('utf-8').decode('unicode_escape')
     return (
         expr.match(x['series_description']) and 
@@ -222,7 +228,7 @@ def wave(scans, protocol):
         session = scan['session_label']
         series = scan['series_description'].strip()
         note = scan['note'].strip()
-        match = re.match('.*_(\d+)mm(_RR)?', series)
+        match = re.match(r'.*_(\d+)mm(_RR)?', series)
         if match:
             vox = float(match.group(1))
             is_rr = match.group(2)
@@ -252,7 +258,7 @@ def wave(scans, protocol):
     return groups
 
 def wavefilter(x):
-    expr = re.compile('^WIP1084C_r3x3_1mm(_RR)?$')
+    expr = re.compile(r'^WIP1084C_r3x3_1mm(_RR)?$')
     image_type = x.get('image_type', '').encode('utf-8').decode('unicode_escape')
     return (
         expr.match(x['series_description']) and
@@ -269,7 +275,7 @@ def diffb0(scans, protocol):
         session = scan['session_label']
         series = scan['series_description'].strip()
         note = scan['note'].strip()
-        match = re.match('.*_(\d+)mm_.*', series)
+        match = re.match(r'.*_(\d+)mm_.*', series)
         if match:
             if count > 2:
                 raise DiffB0Error('found too many diff b0 scans')
